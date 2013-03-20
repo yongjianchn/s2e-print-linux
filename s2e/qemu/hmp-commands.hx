@@ -10,6 +10,20 @@ STEXI
 ETEXI
 
     {
+        .name       = "print_linux_process_info",
+        .args_type  = "",
+        .params     = "",
+        .help       = "print_linux_process_info",
+        .mhandler.cmd = hmp_print_linux_process_info,
+    },
+
+STEXI
+@item help or ? [@var{cmd}]
+@findex help
+Show the help for all commands or just for command @var{cmd}.
+ETEXI
+
+    {
         .name       = "help|?",
         .args_type  = "name:s?",
         .params     = "[cmd]",

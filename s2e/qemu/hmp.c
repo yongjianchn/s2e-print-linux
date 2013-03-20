@@ -934,3 +934,8 @@ void hmp_migrate(Monitor *mon, const QDict *qdict)
         qemu_mod_timer(status->timer, qemu_get_clock_ms(rt_clock));
     }
 }
+/* added by xyj */
+extern void qemu_print_linux_process_info();
+void hmp_print_linux_process_info(Monitor* mon, const QDict* qdict){
+	 qemu_print_linux_process_info();
+}

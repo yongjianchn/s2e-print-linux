@@ -258,7 +258,7 @@ stamps/qemu-configure-debug: stamps/klee-configure klee/Debug/bin/klee-config
 		--with-clang=$(S2EBUILD)/llvm-native/Release/bin/clang \
 		--with-stp=$(S2EBUILD)/stp \
 		--with-klee=$(S2EBUILD)/klee/Debug+Asserts \
-		--target-list=i386-s2e-softmmu,i386-softmmu \
+		--target-list=i386-s2e-softmmu \
 		--enable-llvm \
 		--enable-s2e \
 		--enable-debug --compile-all-with-clang \
@@ -267,14 +267,14 @@ stamps/qemu-configure-debug: stamps/klee-configure klee/Debug/bin/klee-config
 	mkdir -p stamps && touch $@
 
 stamps/qemu-configure-release: stamps/klee-configure klee/Release/bin/klee-config
-	mkdir -p qemu-release
+	mkdir -p qemu-release && mkdir -p ./qemu-release/i386-s2e-softmmu/s2e/Plugins/linux
 	cd qemu-release && $(S2ESRC)/qemu/configure \
 		--prefix=$(S2EBUILD)/opt \
 		--with-llvm=$(S2EBUILD)/llvm/Release+Asserts  \
 		--with-clang=$(S2EBUILD)/llvm-native/Release/bin/clang \
 		--with-stp=$(S2EBUILD)/stp \
 		--with-klee=$(S2EBUILD)/klee/Release+Asserts \
-		--target-list=i386-s2e-softmmu,i386-softmmu \
+		--target-list=i386-s2e-softmmu \
 		--enable-llvm \
 		--enable-s2e --compile-all-with-clang \
                 $(EXTRA_QEMU_FLAGS)
@@ -298,7 +298,7 @@ stamps/qemu-configure-release-asan: stamps/klee-make-release-asan
 		--with-clang=$(S2EBUILD)/llvm-native/Release/bin/clang \
 		--with-stp=$(S2EBUILD)/stp-asan \
 		--with-klee=$(S2EBUILD)/klee/Release+Asserts \
-		--target-list=i386-s2e-softmmu,i386-softmmu \
+		--target-list=i386-s2e-softmmu \
 		--asancc=$(ASAN_CC) \
 		--asancxx=$(ASAN_CXX) \
 		--enable-llvm \
