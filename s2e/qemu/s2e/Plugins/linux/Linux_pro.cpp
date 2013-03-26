@@ -27,18 +27,33 @@ void print_linux_process_info()
 	uint32_t taskaddr = m_Linux_read->get_first_task_struct();
 	uint32_t nowtask = taskaddr;
 	int i = 0;
-	char name[512];
+	char p_name[512];
+	char m_name[512];
 	do
 	{
+		/*get pid and process name, print*/
 		int nowpid  = m_Linux_read->get_process_pid(nowtask);
-		m_Linux_read->get_process_name(nowtask,name,512);
+		m_Linux_read->get_process_name(nowtask,p_name,512);
+		printf("\n");
+		printf("process %d--- pid:%d\n",i,nowpid);
+		printf("          --- name:%s\n",p_name);
+		/*end of print pid and process name*/
 		
-		printf("porcess %d --- pid:%d\n",i,nowpid);
-		printf("          |--- name:%s\n",name);
+		/*get now_task's module map and print their info one by one*/
+		uint32_t nowmmap = m_Linux_read->get_process_firstmmap(nowtask);
+		int j = 0;
+		while(nowmmap != 0)
+		{
+			m_Linux_read->get_module_name(nowmmap,m_name,512);//TODO
+			int base = m_Linux_read->get_vmstart(nowmmap); 
+			int size = m_Linux_read->get_vmend(nowmmap) - m_Linux_read->get_vmstart(nowmmap);
+			printf("          --- module %d:  name:%s - base:%x - size:%d\n",j,m_name,base,size);
+			nowmmap = m_Linux_read->get_next_mmap(nowmmap);
+			j++;
+		}
+		/*end print module info*/
 		
-		printf("nowtask:%x \n",nowtask);
 		nowtask = m_Linux_read->get_next_task_struct(nowtask);
-		printf("nexttask:%x \n",nowtask);
 		i++;
 	}while(i < 100 && nowtask != taskaddr);
 

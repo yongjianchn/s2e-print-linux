@@ -101,6 +101,38 @@ void Linux_read::get_process_name(uint32_t pcbaddr, char *buf, int size){
 	m_state->readMemoryConcrete(pcbaddr + commoffset,buf, 
 							  size);
 }
+uint32_t Linux_read::get_process_firstmmap(uint32_t pcbaddr){
+	uint32_t mmaddr,mmap;
+	m_state->readMemoryConcrete(pcbaddr + mmoffset, &mmaddr, sizeof(mmaddr));
+	m_state->readMemoryConcrete(mmaddr, &mmap, sizeof(mmap));
+	return mmap;
+}
 
-}//
-}//
+uint32_t Linux_read::get_next_mmap(uint32_t mmapaddr){
+	uint32_t mmap;
+	m_state->readMemoryConcrete(mmapaddr + vmnextoffset, &mmap, sizeof(mmap));
+	return mmap;
+}
+
+void Linux_read::get_module_name(uint32_t mmap,char *name,int size){
+	uint32_t vmfile, dentry;
+	m_state->readMemoryConcrete(mmap + vmfileoffset, &vmfile, sizeof(vmfile));
+	m_state->readMemoryConcrete(vmfile + dentryoffset, &dentry, sizeof(dentry));
+	m_state->readMemoryConcrete(dentry + dinameoffset, name, size < 36 ? size : 36);
+}
+
+int Linux_read::get_vmstart(uint32_t mmap){
+	uint32_t vmstart;
+	m_state->readMemoryConcrete(mmap + vmstartoffset, &vmstart, sizeof(vmstart));
+	return vmstart;
+}
+
+int Linux_read::get_vmend(uint32_t mmap){
+	uint32_t vmend;
+	m_state->readMemoryConcrete(mmap + vmendoffset, &vmend, sizeof(vmend));
+	return vmend;
+}
+
+
+}//namespace plugins
+}//namespace s2e

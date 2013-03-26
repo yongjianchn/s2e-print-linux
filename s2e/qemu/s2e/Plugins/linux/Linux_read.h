@@ -45,10 +45,18 @@ public:
 					  TranslationBlock *tb,
 					  uint64_t pc);
 	void init_kernel_info(void);
+	
 	uint32_t get_first_task_struct(void);
 	uint32_t get_next_task_struct(uint32_t pcbaddr);
 	int get_process_pid(uint32_t pcbaddr);
 	void get_process_name(uint32_t pcbaddr, char *buf, int size);
+	
+	uint32_t get_process_firstmmap(uint32_t pcbaddr);
+	uint32_t get_next_mmap(uint32_t mmapaddr);
+	void get_module_name(uint32_t mmap,char *name,int size);
+	int get_vmstart(uint32_t mmap);
+	int get_vmend(uint32_t mmap);
+	
 };
 
 }//namespace plugins
