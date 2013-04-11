@@ -8,6 +8,7 @@
 
 #include "ModuleExecutionDetector.h"
 #include "FunctionMonitor.h"
+#include "RawMonitor.h"
 
 #include <string>
 #include <vector>
@@ -24,9 +25,16 @@ public:
 	MemoryManager(S2E* s2e): Plugin(s2e) {};
 	
 	FunctionMonitor *m_functionMonitor;
+	RawMonitor *m_RawMonitor;
+	ModuleExecutionDetector *m_ModuleExecutionDetector;
+	
+	uint32_t address;
+	klee::ref<klee::Expr> size;
+	uint32_t edi;
+	klee::ref<klee::Expr> ecx;
 	struct grantedMemory{
 		uint32_t address;
-		klee::ref<klee::Expr> symValue;
+		klee::ref<klee::Expr> size;
 	};
 	grantedMemory m_grantedMemory;
 	vector<grantedMemory> memory_granted_expression;
@@ -34,31 +42,26 @@ public:
 	void initialize();
 	
 public:
-	//connect signals
+	void onTranslateInstructionStart(ExecutionSignal *signal,
+									 S2EExecutionState* state,
+									 TranslationBlock *tb,
+									 uint64_t pc);
+	void onModuleLoad(S2EExecutionState* state,
+					   const ModuleDescriptor& mdsc);
+public:
 	void onFunctionCall_fro(S2EExecutionState *state, uint64_t pc);
 	void onFunctionReturn_fro(S2EExecutionState *state, uint64_t pc);
-	void onMemcpyExecute(S2EExecutionState *state, uint64_t pc);
-	void onTranslateInstructionStart(
-		ExecutionSignal *signal,
-		S2EExecutionState* state,
-		TranslationBlock *tb,
-		uint64_t pc);
-	void onTranslateBlockEnd(ExecutionSignal* signal, 
-										   S2EExecutionState* state,
-										   TranslationBlock* tb,
-										   uint64_t endpc/* ending instruction pc */,
-										   bool valid/* static target is valid */,
-										   uint64_t targetpc/* static target pc */
-										  );
-	void onMallocStart(S2EExecutionState* state,
-									  const ModuleDescriptor& mdsc);
-	
-	void onFunctionCall(S2EExecutionState*,
-						 FunctionMonitorState*);
+	void onFunctionCall(S2EExecutionState*,FunctionMonitorState*);
 	void onFunctionReturn(S2EExecutionState*,bool);
+	void onMemcpyExecute(S2EExecutionState *state, uint64_t pc);
 	
 	klee::ref<klee::Expr> getArgValue(S2EExecutionState* state);
+	klee::ref<klee::Expr> getArgValue4(S2EExecutionState* state);
+
+	bool check___kmalloc(uint32_t address, klee::ref<klee::Expr> size, S2EExecutionState *state);
+	bool check_rep(uint32_t edi, klee::ref<klee::Expr> ecx, S2EExecutionState *state);
 	
+	void grant(void);
 };
 
 }//namespace plugins
