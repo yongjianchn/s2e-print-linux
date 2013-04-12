@@ -292,8 +292,9 @@ protected:
   /// function is a wrapper around the state's addConstraint function
   /// which also manages manages propogation of implied values,
   /// validity checks, and seed patching.
+public://added by xyj
   void addConstraint(ExecutionState &state, ref<Expr> condition);
-
+protected://added by xyj
   // Called on [for now] concrete reads, replaces constant with a symbolic
   // Used for testing.
   ref<Expr> replaceReadWithSymbolic(ExecutionState &state, ref<Expr> e);

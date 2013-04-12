@@ -21,13 +21,29 @@ namespace plugins{
 class MemoryManager : public Plugin
 {
 	S2E_PLUGIN
-public:
-	MemoryManager(S2E* s2e): Plugin(s2e) {};
-	
+private:
+	//m_plugin
 	FunctionMonitor *m_functionMonitor;
 	RawMonitor *m_RawMonitor;
 	ModuleExecutionDetector *m_ModuleExecutionDetector;
-	
+	//m_connect
+	sigc::connection m_onTranslateInstruction;
+	sigc::connection m_onModuleLoad;
+	//config
+	bool m_terminateOnBugs;
+	bool m_detectOnly__kmalloc_ip_options_get;
+	bool m_detectOnlyMemcpy_ip_options_get;
+	uint64_t m_pc_ip_options_get_call___kmalloc;
+	uint64_t m_pc___kmalloc_return_ip_options_get;
+	uint64_t m_pc_rep_movsl_ip_options_get;
+	uint64_t m_pc___kmalloc;
+public:
+	void initialize();
+	MemoryManager(S2E* s2e): Plugin(s2e) {};
+	//
+	typedef std::pair<std::string, std::vector<unsigned char> > VarValuePair;
+    typedef std::vector<VarValuePair> ConcreteInputs;
+	//
 	uint32_t address;
 	klee::ref<klee::Expr> size;
 	uint32_t edi;
@@ -38,8 +54,6 @@ public:
 	};
 	grantedMemory m_grantedMemory;
 	vector<grantedMemory> memory_granted_expression;
-public:
-	void initialize();
 	
 public:
 	void onTranslateInstructionStart(ExecutionSignal *signal,

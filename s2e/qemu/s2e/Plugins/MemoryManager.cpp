@@ -30,9 +30,19 @@ S2E_DEFINE_PLUGIN(MemoryManager, "MemoryManager plugin", "",);
 
 void MemoryManager::initialize()
 {
+	//get config
+	ConfigFile *cfg = s2e()->getConfig();
+	m_terminateOnBugs = cfg->getBool(getConfigKey() + ".terminateOnBugs", true);
+	m_detectOnlyMemcpy_ip_options_get = cfg->getBool(getConfigKey() + ".detectOnlyMemcpy_ip_options_get", true);
+	m_detectOnly__kmalloc_ip_options_get = cfg->getBool(getConfigKey() + ".detectOnly__kmalloc_ip_options_get", true);
+	m_pc_ip_options_get_call___kmalloc = cfg->getInt(getConfigKey() + ".pc_ip_options_get_call___kmalloc");
+	m_pc___kmalloc_return_ip_options_get = cfg->getInt(getConfigKey() + ".pc___kmalloc_return_ip_options_get");
+	m_pc_rep_movsl_ip_options_get = cfg->getInt(getConfigKey() + ".pc_rep_movsl_ip_options_get");
+	m_pc___kmalloc = cfg->getInt(getConfigKey() + ".pc___kmalloc");
+	
 	m_functionMonitor = (s2e::plugins::FunctionMonitor*)(s2e()->getPlugin("FunctionMonitor"));
 	m_RawMonitor = (s2e::plugins::RawMonitor*)(s2e()->getPlugin("RawMonitor"));
-	m_ModuleExecutionDetector = (s2e::plugins::ModuleExecutionDetector*)(s2e()->getPlugin("ModuleExecutionDetector"));
+	//m_ModuleExecutionDetector = (s2e::plugins::ModuleExecutionDetector*)(s2e()->getPlugin("ModuleExecutionDetector"));
 	CorePlugin *plg = s2e()->getCorePlugin();
 	
 	//m_ModuleExecutionDetector->onModuleLoad.connect(sigc::mem_fun(*this,&MemoryManager::onModuleLoad));
@@ -40,13 +50,19 @@ void MemoryManager::initialize()
 	备注: m_ModuleExecutionDetector的onModuleLoad不起作用，可以用RawMonitor的onModuleLoad信号
 	*/
 	
-	//m_RawMonitor->onModuleLoad.connect(sigc::mem_fun(*this,&MemoryManager::onModuleLoad));
+	m_onModuleLoad = m_RawMonitor->onModuleLoad.connect(sigc::mem_fun(*this,
+					 &MemoryManager::onModuleLoad));
 	/*
-	备注：RawMonitor被使用的时候，functionMonitor不起作用（即使成功注册，也不会发射onFunctionCall等信号）
-	这个问题不明原因，可能是RaWMonitor提供的东西不如WindowsMonitor充足，使用了反而影响functionMonitor判断；
-	因此配置文件里不要使用RawMonitor！！！
+	备注：RawMonitor本身是存在很大问题的，它发出的ModuleLoad信号是虚假的，只要系统启动，第一条指令就发所有配置的moduleLoad信号
+		可以修改完善RawMonitor，但是它跟插件的核心问题无关，暂且不理
 	*/
-    plg->onTranslateInstructionStart.connect(sigc::mem_fun(*this, &MemoryManager::onTranslateInstructionStart));
+    m_onTranslateInstruction = plg->onTranslateInstructionStart.connect(sigc::mem_fun(*this, 
+							   &MemoryManager::onTranslateInstructionStart));
+	
+	if(m_detectOnly__kmalloc_ip_options_get)
+	{
+		m_onModuleLoad.disconnect();
+	}
 }
 
 void MemoryManager::onTranslateInstructionStart(
@@ -55,46 +71,40 @@ void MemoryManager::onTranslateInstructionStart(
 			TranslationBlock *tb,
 			uint64_t pc)
 {	
-	//ip_options_get-------
-	//0xc02620b0 push
-	//0xc02620d0 call
-	//0xc02620d5 mov
-	//0xc02621f0 rep movsl
-	//__kmalloc------------
-	//0xc013aa30 push
-	//memcpy---------------
-	//0xc01c61dc rep movsl
-	if(pc == 0xc02620b0)//进入ip_options_get的时候在functionMonitor中注册__kmalloc
-	{	
-		s2e()->getMessagesStream() << "---on PC = 0xc02620b0 register onFunctionCall" << '\n';
-		uint64_t wantedPc = 0xc013aa30;
-		uint64_t cr3 = state->getPid();
-		FunctionMonitor::CallSignal *cs = m_functionMonitor->getCallSignal(state, wantedPc, cr3);
-		cs->connect(sigc::mem_fun(*this, &MemoryManager::onFunctionCall));
-	}
-	/*
-	if(pc == 0xc02620d0)//call __kmalloc in ip_options_get
-	{	
-		signal->connect(sigc::mem_fun(*this, 
-									  &MemoryManager::onFunctionCall_fro));
-		
-	}
-	if(pc == 0xc02620d5)//return to ip_options_get
+	if(m_detectOnly__kmalloc_ip_options_get)
 	{
-		signal->connect(sigc::mem_fun(*this, 
-									  &MemoryManager::onFunctionReturn_fro));
+		if(pc == m_pc_ip_options_get_call___kmalloc)//call __kmalloc in ip_options_get
+		{	
+			signal->connect(sigc::mem_fun(*this, 
+										  &MemoryManager::onFunctionCall_fro));
+			
+		}
+		if(pc == m_pc___kmalloc_return_ip_options_get)//return to ip_options_get
+		{
+			signal->connect(sigc::mem_fun(*this, 
+										  &MemoryManager::onFunctionReturn_fro));
+		}
 	}
-	*/
 	
 	//memcpy
 	uint32_t inst=0;	
 	state->readMemoryConcrete(pc, &inst, 2);
 	inst=inst&0xf0ff;
-	//if(inst == 0xa0f3)//所有的rep ***指令
-	if(pc == 0xc02621f0)//针对rep movsl from ip_options_get
+	if(!m_detectOnlyMemcpy_ip_options_get)
 	{
-		signal->connect(sigc::mem_fun(*this, 
+		if(inst == 0xa0f3)//所有的rep ***指令
+		{
+			signal->connect(sigc::mem_fun(*this, 
+										  &MemoryManager::onMemcpyExecute));
+		}
+	}
+	else
+	{
+		if(pc == m_pc_rep_movsl_ip_options_get)//针对rep movsl from ip_options_get
+		{
+			signal->connect(sigc::mem_fun(*this, 
 									  &MemoryManager::onMemcpyExecute));
+		}
 	}
 }
 
@@ -102,12 +112,12 @@ void MemoryManager::onModuleLoad(S2EExecutionState* state,
 								  const ModuleDescriptor& module)
 {
 	s2e()->getMessagesStream() << "---onModuleLoad" << '\n';
-	uint64_t wantedPc = 0xc013aa30;
-	uint64_t cr3 = state->getPid();
-	FunctionMonitor::CallSignal *cs = m_functionMonitor->getCallSignal(state, wantedPc, cr3);
+	uint64_t wantedPc = m_pc___kmalloc;
+	uint64_t wantedCr3 = 0;
+	FunctionMonitor::CallSignal *cs = m_functionMonitor->getCallSignal(state, wantedPc, wantedCr3);
 	cs->connect(sigc::mem_fun(*this, &MemoryManager::onFunctionCall));
 }
-/*
+
 void MemoryManager::onFunctionCall_fro(S2EExecutionState *state, uint64_t pc)
 {
 	g_s2e->getMessagesStream() << "---ip_options_get call __kmalloc" << '\n';
@@ -124,9 +134,9 @@ void MemoryManager::onFunctionReturn_fro(S2EExecutionState *state, uint64_t pc)
 	s2e()->getMessagesStream() << "分配的address （eax）:" << hexval(address) << '\n';
 	//check
 	check___kmalloc(address,size,state);
-	grant();
+	//grant();//如果保存所有的__kmalloc，vector会崩 TODO
 }
-*/
+
 void MemoryManager::onFunctionCall(S2EExecutionState* state, FunctionMonitorState *fns)
 {
 	s2e()->getMessagesStream() << "---onFunctionCall" << '\n';
@@ -146,7 +156,7 @@ void MemoryManager::onFunctionReturn(S2EExecutionState* state,bool test)
 	s2e()->getMessagesStream() << "分配的address （eax）:" << hexval(address) << '\n';
 	//check
 	check___kmalloc(address,size,state);
-	grant();
+	//grant();//如果保存所有的__kmalloc，vector会崩 TODO
 }
 void MemoryManager::onMemcpyExecute(S2EExecutionState *state, uint64_t pc)
 {
@@ -191,102 +201,153 @@ bool MemoryManager::check___kmalloc(uint32_t address, klee::ref<klee::Expr> size
 		s2e()->getMessagesStream() << "===============================================" << '\n';
 		s2e()->getMessagesStream() << "BUG：__kmalloc返回地址是0x0！！！" << '\n';
 		s2e()->getMessagesStream() << "===============================================" << '\n';
-		s2e()->getExecutor()->terminateStateEarly(*state, "BUG: __kmalloc address is 0x0\n");
+		if(m_terminateOnBugs)
+		{
+			s2e()->getExecutor()->terminateStateEarly(*state, "BUG: __kmalloc address is 0x0\n");
+		}
 		isok = false;
 	}
 	//check 2 判断size本身的合法性
+	//具体值
 	if (isa<klee::ConstantExpr>(size))
 	{
-		//具体值
 		int value = cast<klee::ConstantExpr>(size)->getZExtValue();
-		if (value <= 0 || value >= 0x0fff0000)
+		if (value <= 0 || value >= 0x00ff0000)
 		{
 			s2e()->getMessagesStream() << "============================================================" << '\n';
 			s2e()->getMessagesStream() << "BUG: __kmalloc [Size <= 0||Size >= 0x0fff0000] Size: " << value << '\n';
 			s2e()->getMessagesStream() << "============================================================" << '\n';
-			s2e()->getExecutor()->terminateStateEarly(*state, "BUG: __kmalloc size is not valid\n");
+			if(m_terminateOnBugs)
+			{
+				s2e()->getExecutor()->terminateStateEarly(*state, "BUG: __kmalloc size is not valid\n");
+			}
 			isok = false;
 	
 		}
+	}
+	//如果size是符号值
+	else
+	{
+		//求解出size<=0的时候外界的输入是多少，也就是外界传入什么值的时候可以造成size会为0
+		bool isTrue;
+		klee::ref<klee::Expr> cond = klee::SleExpr::create(size, 
+									 klee::ConstantExpr::create( 0, size.get()->getWidth()));
+		if (!(s2e()->getExecutor()->getSolver()->mayBeTrue(klee::Query(state->constraints, cond), isTrue))) { 
+			s2e()->getMessagesStream() << "failed to assert the condition" << '\n';
+			return false;
+		}
+		if (isTrue) {
+			ConcreteInputs inputs;
+			ConcreteInputs::iterator it; 
+			
+			s2e()->getExecutor()->addConstraint(*state, cond);
+			s2e()->getExecutor()->getSymbolicSolution(*state, inputs);
+			
+			s2e()->getMessagesStream() << "======================================================" << '\n';
+			s2e()->getMessagesStream() << "BUG:on this condition __kmalloc size will <= 0" << '\n';
+			s2e()->getMessagesStream() << "Condition: " << '\n';
+			for (it = inputs.begin(); it != inputs.end(); ++it) {
+				const VarValuePair &vp = *it;
+				s2e()->getMessagesStream() << vp.first << " : ";
+				for (unsigned i=0; i<vp.second.size(); ++i) {
+					s2e()->getMessagesStream() << hexval((unsigned char) vp.second[i]) << " ";
+				}
+				s2e()->getMessagesStream() << '\n';
+			}
+			s2e()->getMessagesStream() << "======================================================" << '\n';
+			isok = false;
+			if(m_terminateOnBugs)
+			{
+				s2e()->getExecutor()->terminateStateEarly(*state, "BUG: __kmalloc size is not valid\n");
+			}
+		}
+		
 	}
 	return isok;
 }
 bool MemoryManager::check_rep(uint32_t edi, klee::ref<klee::Expr> ecx, S2EExecutionState *state)
 {
 	bool isok = true;
-	//check 3 检查memcpy访问是否合法
+	//check 3 检查memcpy edi访问是否合法
+	//检查edi
+	int imax = memory_granted_expression.capacity();
+	bool bigger = 1;
+	for (int i = 0; i< imax; i++)
+	{
+		uint32_t edi_i = memory_granted_expression.at(i).address;
+		if (edi > edi_i)
+		{
+			bigger = 1;
+		}
+		else bigger = 0;
+	}
+	if (bigger == 0)
+	{
+		s2e()->getMessagesStream() << "============================================================" << '\n';
+		s2e()->getMessagesStream() << "BUG: memcpy edi is too small，can not access. edi:" << hexval(edi) << '\n';
+		s2e()->getMessagesStream() << "============================================================" << '\n';
+		isok = false;
+		//终结
+		if(m_terminateOnBugs)
+		{
+			s2e()->getExecutor()->terminateStateEarly(*state, "BUG: edi can not be accessed\n");
+		}
+	}
+	//check 4 检查memcpy size访问是否合法
 	//concrete
 	if(isa<klee::ConstantExpr>(ecx))
 	{
-		//检查edi
-		int imax = memory_granted_expression.capacity();
-		bool bigger = 1;
-		for (int i = 0; i< imax; i++)
-		{
-			uint32_t edi_i = memory_granted_expression.at(i).address;
-			if (edi > edi_i)
-			{
-				bigger = 1;
-			}
-			else bigger = 0;
-		}
-		if (bigger == 0)
-		{
-			s2e()->getMessagesStream() << "============================================================" << '\n';
-			s2e()->getMessagesStream() << "BUG: memcpy edi is too small，can not access. edi:" << hexval(edi) << '\n';
-			s2e()->getMessagesStream() << "============================================================" << '\n';
-			isok = false;
-			//终结
-			s2e()->getExecutor()->terminateStateEarly(*state, "BUG: edi can not be accessed\n");
-		}
-		//检查size
 		int ecx_con = cast<klee::ConstantExpr>(ecx)->getZExtValue();
-		if(ecx_con < 0 || ecx_con > 0x0fff0000) 
+		if(ecx_con < 0 || ecx_con > 0x00ff0000) 
 		{
 			s2e()->getMessagesStream() << "============================================================" << '\n';
 			s2e()->getMessagesStream() << "BUG: memcpy [Size < 0||Size > 0x0fff0000] Size: " << hexval(ecx_con) << '\n';
 			s2e()->getMessagesStream() << "============================================================" << '\n';
 			isok = false;
-			s2e()->getExecutor()->terminateStateEarly(*state, "BUG: memcpy lenth is not valid\n");
+			if(m_terminateOnBugs)
+			{
+				s2e()->getExecutor()->terminateStateEarly(*state, "BUG: memcpy lenth is not valid\n");
+			}
 		}
 	}
 	//symbolic
-	/*
 	else
 	{
-		klee::ref<klee::Expr> cond = klee::SgtExpr::create(
-										 ecx, klee::ConstantExpr::create(
-											 0x20, ecx.get()->getWidth()));
-		s2e()->getMessagesStream() << "assert cond : " << cond << '\n';
-		bool isTrue; 
+		//造成符号执行时redhat死掉的原因是拷贝了符号化的长度。。一直拷贝，所以要判定符号化范围，如果范围过大，则终止执行。
+		//检查是否可能过大---设定为0x00ffffff
+		bool isTrue;
+		klee::ref<klee::Expr> cond = klee::SgeExpr::create(ecx, 
+									 klee::ConstantExpr::create( 0x00ffffff, size.get()->getWidth()));
 		if (!(s2e()->getExecutor()->getSolver()->mayBeTrue(klee::Query(state->constraints, cond), isTrue))) { 
 			s2e()->getMessagesStream() << "failed to assert the condition" << '\n';
-			return;
-		} 
+			return false;
+		}
 		if (isTrue) {
-			vector<VarValuePair> inputs;
+			ConcreteInputs inputs;
 			ConcreteInputs::iterator it; 
 			
-			s2e()->getExecutor()->addConstraint_pub(*state, cond);
+			s2e()->getExecutor()->addConstraint(*state, cond);
 			s2e()->getExecutor()->getSymbolicSolution(*state, inputs);
 			
-			s2e()->getMessagesStream() << "====================================================" << '\n';
-			s2e()->getMessagesStream() << "BUG:memcpy crash detected!" << '\n'
-									   << "input value : " << '\n';
-									   
+			s2e()->getMessagesStream() << "======================================================" << '\n';
+			s2e()->getMessagesStream() << "BUG:on this condition memcpy size will >= 0x00ffffff" << '\n';
+			s2e()->getMessagesStream() << "Condition: " << '\n';
 			for (it = inputs.begin(); it != inputs.end(); ++it) {
 				const VarValuePair &vp = *it;
-				s2e()->getMessagesStream() << "---------" << vp.first << " : ";
-		
+				s2e()->getMessagesStream() << vp.first << " : ";
 				for (unsigned i=0; i<vp.second.size(); ++i) {
 					s2e()->getMessagesStream() << hexval((unsigned char) vp.second[i]) << " ";
 				}
 				s2e()->getMessagesStream() << '\n';
 			}
-			s2e()->getMessagesStream() << "====================================================" << '\n';
+			s2e()->getMessagesStream() << "======================================================" << '\n';
+			isok = false;
+			if(m_terminateOnBugs)
+			{
+				s2e()->getExecutor()->terminateStateEarly(*state, "BUG: memcpy size is not valid\n");
+			}
 		}
 	}
-	*/
 	return isok;
 }
 
