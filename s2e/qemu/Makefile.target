@@ -510,6 +510,7 @@ s2eobj-y += s2e/Plugins/linux/Linux_read.o
 s2eobj-y += s2e/Plugins/linux/Linux_pro.o
 s2eobj-y += s2e/Plugins/linux/cmd_qemu.o
 s2eobj-y += s2e/Plugins/MemoryManager.o
+s2eobj-y += s2e/Plugins/CallTracer.o
 # end of code added by xyj
 
 #sqlite database is deprecated now

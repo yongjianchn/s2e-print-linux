@@ -57,7 +57,11 @@ public:
 
     typedef sigc::signal<void, S2EExecutionState*> ReturnSignal;
     typedef sigc::signal<void, S2EExecutionState*, FunctionMonitorState*> CallSignal;
-
+	
+	//added by xyj
+    sigc::signal<void, S2EExecutionState*> onAllCall;
+	//end of xyj
+	
     void initialize();
     
     CallSignal* getCallSignal(

@@ -106,7 +106,11 @@ void FunctionMonitor::slotTranslateJumpStart(ExecutionSignal *signal,
 void FunctionMonitor::slotCall(S2EExecutionState *state, uint64_t pc)
 {
     DECLARE_PLUGINSTATE(FunctionMonitorState, state);
-
+	
+	//added by xyj
+	onAllCall.emit(state);
+	//end of xyj
+	
     return plgState->slotCall(state, pc);
 }
 

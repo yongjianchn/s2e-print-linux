@@ -228,9 +228,9 @@ bool MemoryManager::check___kmalloc(uint32_t address, klee::ref<klee::Expr> size
 	//如果size是符号值
 	else
 	{
-		//求解出size<=0的时候外界的输入是多少，也就是外界传入什么值的时候可以造成size会为0
+		//求解出size=0的时候外界的输入是多少，也就是外界传入什么值的时候可以造成size会为0
 		bool isTrue;
-		klee::ref<klee::Expr> cond = klee::SleExpr::create(size, 
+		klee::ref<klee::Expr> cond = klee::EqExpr::create(size, 
 									 klee::ConstantExpr::create( 0, size.get()->getWidth()));
 		if (!(s2e()->getExecutor()->getSolver()->mayBeTrue(klee::Query(state->constraints, cond), isTrue))) { 
 			s2e()->getMessagesStream() << "failed to assert the condition" << '\n';
@@ -244,7 +244,7 @@ bool MemoryManager::check___kmalloc(uint32_t address, klee::ref<klee::Expr> size
 			s2e()->getExecutor()->getSymbolicSolution(*state, inputs);
 			
 			s2e()->getMessagesStream() << "======================================================" << '\n';
-			s2e()->getMessagesStream() << "BUG:on this condition __kmalloc size will <= 0" << '\n';
+			s2e()->getMessagesStream() << "BUG:on this condition __kmalloc size will = 0" << '\n';
 			s2e()->getMessagesStream() << "Condition: " << '\n';
 			for (it = inputs.begin(); it != inputs.end(); ++it) {
 				const VarValuePair &vp = *it;
@@ -258,7 +258,7 @@ bool MemoryManager::check___kmalloc(uint32_t address, klee::ref<klee::Expr> size
 			isok = false;
 			if(m_terminateOnBugs)
 			{
-				s2e()->getExecutor()->terminateStateEarly(*state, "BUG: __kmalloc size is not valid\n");
+				s2e()->getExecutor()->terminateStateEarly(*state, "BUG: __kmalloc size is not valid[size=0]\n");
 			}
 		}
 		
