@@ -123,6 +123,12 @@ void MemoryManager::onFunctionCall_fro(S2EExecutionState *state, uint64_t pc)
 	g_s2e->getMessagesStream() << "---ip_options_get call __kmalloc" << '\n';
 	//get size
 	size = MemoryManager::getArgValue(state);
+	if (!isa<klee::ConstantExpr>(size))
+	{
+		s2e()->getMessagesStream() << "=============================================" << '\n';
+		s2e()->getMessagesStream() << "KMALLOCSYMBOLIC: kmalloc size is symbolic" << '\n';
+		s2e()->getMessagesStream() << "=============================================" << '\n';
+	}
 	s2e()->getMessagesStream() << "分配的size表达式(如果是数，那么是16进制)：" << size << '\n';
 }
 
@@ -142,6 +148,12 @@ void MemoryManager::onFunctionCall(S2EExecutionState* state, FunctionMonitorStat
 	s2e()->getMessagesStream() << "---onFunctionCall" << '\n';
 	//get size
 	size = MemoryManager::getArgValue4(state);
+	if (!isa<klee::ConstantExpr>(size))
+	{
+		s2e()->getMessagesStream() << "=============================================" << '\n';
+		s2e()->getMessagesStream() << "KMALLOCSYMBOLIC: kmalloc size is symbolic" << '\n';
+		s2e()->getMessagesStream() << "=============================================" << '\n';
+	}
 	s2e()->getMessagesStream() << "分配的size表达式(如果是数，那么是16进制)：" << size << '\n';
 	//注册return时调用的函数
 	bool test = false;
@@ -164,9 +176,11 @@ void MemoryManager::onMemcpyExecute(S2EExecutionState *state, uint64_t pc)
 	state->readCpuRegisterConcrete(offsetof(CPUX86State, regs[R_EDI]), &edi, sizeof(edi));
 	//get ecx
 	ecx = state->readCpuRegister(offsetof(CPUX86State, regs[R_ECX]), klee::Expr::Int32);
+	/*
 	s2e()->getMessagesStream() << "---onMemcpyExecute   pc:  " << hexval(pc) << "\n";
 	s2e()->getMessagesStream() << "edi : " << hexval(edi) << "\n"
 							   << "ecx : " << ecx << "\n";
+	*/
 	//check
 	check_rep(edi,ecx,state);
 }
@@ -201,10 +215,6 @@ bool MemoryManager::check___kmalloc(uint32_t address, klee::ref<klee::Expr> size
 		s2e()->getMessagesStream() << "===============================================" << '\n';
 		s2e()->getMessagesStream() << "BUG：__kmalloc返回地址是0x0！！！" << '\n';
 		s2e()->getMessagesStream() << "===============================================" << '\n';
-		if(m_terminateOnBugs)
-		{
-			s2e()->getExecutor()->terminateStateEarly(*state, "BUG: __kmalloc address is 0x0\n");
-		}
 		isok = false;
 	}
 	//check 2 判断size本身的合法性
@@ -228,7 +238,7 @@ bool MemoryManager::check___kmalloc(uint32_t address, klee::ref<klee::Expr> size
 	//如果size是符号值
 	else
 	{
-		//求解出size=0的时候外界的输入是多少，也就是外界传入什么值的时候可以造成size会为0
+		//求解出size=0的时候外界的输入是多少，也就是外界传入什么值的时候可以造成size会为=0
 		bool isTrue;
 		klee::ref<klee::Expr> cond = klee::EqExpr::create(size, 
 									 klee::ConstantExpr::create( 0, size.get()->getWidth()));
@@ -313,6 +323,11 @@ bool MemoryManager::check_rep(uint32_t edi, klee::ref<klee::Expr> ecx, S2EExecut
 	//symbolic
 	else
 	{
+		/*
+		s2e()->getMessagesStream() << "=============================================" << '\n';
+		s2e()->getMessagesStream() << "MEMCPYSYMBOLIC: memcpy size is symbolic  eip: " << hexval(state->getPc()) << '\n';
+		s2e()->getMessagesStream() << "=============================================" << '\n';
+		*/
 		//造成符号执行时redhat死掉的原因是拷贝了符号化的长度。。一直拷贝，所以要判定符号化范围，如果范围过大，则终止执行。
 		//检查是否可能过大---设定为0x00ffffff
 		bool isTrue;
