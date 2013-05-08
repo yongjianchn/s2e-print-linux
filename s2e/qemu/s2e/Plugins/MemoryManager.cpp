@@ -8,6 +8,7 @@
 #include <s2e/S2EExecutionState.h>
 #include <s2e/S2EExecutor.h>
 #include <klee/Solver.h>
+#include <klee/Constraints.h>
 
 #include <iostream>
 #include <sstream>
@@ -128,6 +129,8 @@ void MemoryManager::onFunctionCall_fro(S2EExecutionState *state, uint64_t pc)
 		s2e()->getMessagesStream() << "=============================================" << '\n';
 		s2e()->getMessagesStream() << "KMALLOCSYMBOLIC: kmalloc size is symbolic" << '\n';
 		s2e()->getMessagesStream() << "=============================================" << '\n';
+		//打印完整路径约束
+		printConstraintExpr(state);
 	}
 	s2e()->getMessagesStream() << "分配的size表达式(如果是数，那么是16进制)：" << size << '\n';
 }
@@ -153,6 +156,8 @@ void MemoryManager::onFunctionCall(S2EExecutionState* state, FunctionMonitorStat
 		s2e()->getMessagesStream() << "=============================================" << '\n';
 		s2e()->getMessagesStream() << "KMALLOCSYMBOLIC: kmalloc size is symbolic" << '\n';
 		s2e()->getMessagesStream() << "=============================================" << '\n';
+		//打印完整路径约束
+		printConstraintExpr(state);
 	}
 	s2e()->getMessagesStream() << "分配的size表达式(如果是数，那么是16进制)：" << size << '\n';
 	//注册return时调用的函数
@@ -215,6 +220,8 @@ bool MemoryManager::check___kmalloc(uint32_t address, klee::ref<klee::Expr> size
 		s2e()->getMessagesStream() << "===============================================" << '\n';
 		s2e()->getMessagesStream() << "BUG：__kmalloc返回地址是0x0！！！" << '\n';
 		s2e()->getMessagesStream() << "===============================================" << '\n';
+		//打印完整路径约束
+		printConstraintExpr(state);
 		isok = false;
 	}
 	//check 2 判断size本身的合法性
@@ -227,6 +234,8 @@ bool MemoryManager::check___kmalloc(uint32_t address, klee::ref<klee::Expr> size
 			s2e()->getMessagesStream() << "============================================================" << '\n';
 			s2e()->getMessagesStream() << "BUG: __kmalloc [Size <= 0||Size >= 0x0fff0000] Size: " << value << '\n';
 			s2e()->getMessagesStream() << "============================================================" << '\n';
+			//打印完整路径约束
+			printConstraintExpr(state);
 			if(m_terminateOnBugs)
 			{
 				s2e()->getExecutor()->terminateStateEarly(*state, "BUG: __kmalloc size is not valid\n");
@@ -265,6 +274,8 @@ bool MemoryManager::check___kmalloc(uint32_t address, klee::ref<klee::Expr> size
 				s2e()->getMessagesStream() << '\n';
 			}
 			s2e()->getMessagesStream() << "======================================================" << '\n';
+			//打印完整路径约束
+			printConstraintExpr(state);
 			isok = false;
 			if(m_terminateOnBugs)
 			{
@@ -296,6 +307,9 @@ bool MemoryManager::check_rep(uint32_t edi, klee::ref<klee::Expr> ecx, S2EExecut
 		s2e()->getMessagesStream() << "============================================================" << '\n';
 		s2e()->getMessagesStream() << "BUG: memcpy edi is too small，can not access. edi:" << hexval(edi) << '\n';
 		s2e()->getMessagesStream() << "============================================================" << '\n';
+		//打印完整路径约束
+		printConstraintExpr(state);
+		
 		isok = false;
 		//终结
 		if(m_terminateOnBugs)
@@ -313,6 +327,9 @@ bool MemoryManager::check_rep(uint32_t edi, klee::ref<klee::Expr> ecx, S2EExecut
 			s2e()->getMessagesStream() << "============================================================" << '\n';
 			s2e()->getMessagesStream() << "BUG: memcpy [Size < 0||Size > 0x0fff0000] Size: " << hexval(ecx_con) << '\n';
 			s2e()->getMessagesStream() << "============================================================" << '\n';
+			//打印完整路径约束
+			printConstraintExpr(state);
+			
 			isok = false;
 			if(m_terminateOnBugs)
 			{
@@ -356,6 +373,9 @@ bool MemoryManager::check_rep(uint32_t edi, klee::ref<klee::Expr> ecx, S2EExecut
 				s2e()->getMessagesStream() << '\n';
 			}
 			s2e()->getMessagesStream() << "======================================================" << '\n';
+			//打印完整路径约束
+			printConstraintExpr(state);
+			
 			isok = false;
 			if(m_terminateOnBugs)
 			{
@@ -365,7 +385,16 @@ bool MemoryManager::check_rep(uint32_t edi, klee::ref<klee::Expr> ecx, S2EExecut
 	}
 	return isok;
 }
-
+void MemoryManager::printConstraintExpr(S2EExecutionState* state)
+{
+	s2e()->getMessagesStream() << "----------路径约束-----------" << '\n' ;
+	for (klee::ConstraintManager::const_iterator it = state->constraints.begin(),ie = state->constraints.end(); 
+			it != ie; ++it)
+	{
+		s2e()->getMessagesStream() << *it << '\n' ;
+	}
+	s2e()->getMessagesStream() << "----------约束结束-----------" << '\n' ;
+}
 }//namespace plugins
 
 }//namespace s2e

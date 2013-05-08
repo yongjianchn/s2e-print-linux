@@ -76,6 +76,7 @@ public:
 	bool check_rep(uint32_t edi, klee::ref<klee::Expr> ecx, S2EExecutionState *state);
 	
 	void grant(void);
+	void printConstraintExpr(S2EExecutionState* state);
 };
 
 }//namespace plugins
