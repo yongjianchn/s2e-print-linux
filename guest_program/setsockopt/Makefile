@@ -1,2 +1,2 @@
 all:
-	gcc -I../ setsockopt.c -o test -m32
+	gcc-3.4 -I../ setsockopt.c -o test -m32

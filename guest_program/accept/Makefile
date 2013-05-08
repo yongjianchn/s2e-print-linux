@@ -1,2 +1,2 @@
 all:
-	gcc -I../ accept.c -o test
+	gcc-3.4 -I../ accept.c -o test -m32

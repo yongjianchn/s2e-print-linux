@@ -39,35 +39,39 @@ int main(int ac,char **av)
 	cm2= (struct cmsghdr *) (long) ((char *)CMSG_DATA(cmsg)+sizeof(opts));
 	cm2->cmsg_level = SOL_IP;
 	cm2->cmsg_type = IP_RETOPTS;
-	cm2->cmsg_len =  -1;
+	cm2->cmsg_len =  sizeof(struct cmsghdr) + sizeof(opts);
+
+	int flags = 0;
+	msghdr.msg_flags = 0;
 
 	msghdr.msg_name = &sockad;
 	msghdr.msg_namelen = sizeof(sockad);
-
 	msghdr.msg_control=cmsg;
 	msghdr.msg_controllen= cmsg->cmsg_len + 420; 
-	msghdr.msg_iov = iovector;
 
+	msghdr.msg_iov = iovector;
 	msghdr.msg_iovlen = 1;
 	iovector[0].iov_base = msg;
 	iovector[0].iov_len = sizeof(msg);
+
 	system("sync");
 	s2e_enable_forking();
-	s2e_make_symbolic(&(msghdr.msg_namelen), sizeof(msghdr.msg_namelen),  "msghdr.msg_namelen");
-	s2e_make_symbolic(&(msghdr.msg_controllen), sizeof(msghdr.msg_controllen), "msghdr.msg_controllen");
+	
+//	s2e_make_symbolic(&(msghdr.msg_namelen), sizeof(msghdr.msg_namelen),  "msghdr.msg_namelen");
+//	s2e_make_symbolic(&(msghdr.msg_iovlen), sizeof(msghdr.msg_iovlen), "msghdr.msg_iovlen");
+	
+//	s2e_make_symbolic(&(msghdr.msg_flags), sizeof(msghdr.msg_flags), "msghdr.msg_flags");
+//	s2e_make_symbolic(&(flags), sizeof(flags), "flags");
+	
+//	s2e_make_symbolic(&(cmsg->cmsg_len),sizeof(cmsg->cmsg_len), "cmsg->cmsg_len");
+//	s2e_make_symbolic(&(cmsg->cmsg_level),sizeof(cmsg->cmsg_level), "cmsg->cmsg_level");
+//	s2e_make_symbolic(&(cmsg->cmsg_type),sizeof(cmsg->cmsg_type), "cmsg->cmsg_type");
 
-	s2e_make_symbolic(&(cmsg->cmsg_len),sizeof(cmsg->cmsg_len), "cmsg->cmsg_len");
-	s2e_make_symbolic(&(cmsg->cmsg_level),sizeof(cmsg->cmsg_level), "cmsg->cmsg_level");
-	s2e_make_symbolic(&(cmsg->cmsg_type),sizeof(cmsg->cmsg_type), "cmsg->cmsg_type");
+//	s2e_make_symbolic(&(cm2->cmsg_len),sizeof(cm2->cmsg_len), "cm2->cmsg_len");
+//	s2e_make_symbolic(&(cm2->cmsg_level),sizeof(cm2->cmsg_level), "cm2->cmsg_level");
+//	s2e_make_symbolic(&(cm2->cmsg_type),sizeof(cm2->cmsg_type), "cm2->cmsg_type");
 
-	s2e_make_symbolic(&(cm2->cmsg_len),sizeof(cm2->cmsg_len), "cm2->cmsg_len");
-	s2e_make_symbolic(&(cm2->cmsg_level),sizeof(cm2->cmsg_level), "cm2->cmsg_level");
-	s2e_make_symbolic(&(cm2->cmsg_type),sizeof(cm2->cmsg_type), "cm2->cmsg_type");
-
-	s2e_make_symbolic(&(iovector[0].iov_base), sizeof(iovector[0].iov_base), "iovector[0].iov_base");
-	s2e_make_symbolic(&(iovector[0].iov_len), sizeof(iovector[0].iov_len), "iovector[0].iov_len");
-
-	if ((i = sendmsg(s, &msghdr, 0)) < 0)
+	if (i = sendmsg(s, &msghdr, flags) < 0)
 	perror("sendmsg");
 
 	s2e_disable_forking();

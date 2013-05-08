@@ -1,2 +1,2 @@
 all:
-	gcc -I../ connect.c -o test -m32
+	gcc-3.4 -I../ connect.c -o test -m32

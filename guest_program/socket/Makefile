@@ -1,2 +1,2 @@
 all:
-	gcc -I../ socket.c -o test -m32
+	gcc-3.4 -I../ socket.c -o test -m32

@@ -1,2 +1,2 @@
 all:
-	gcc -I../ listen.c -o test -m32
+	gcc-3.4 -I../ listen.c -o test -m32
