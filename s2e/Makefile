@@ -251,7 +251,7 @@ klee/Debug/bin/klee-config: stamps/klee-make-debug
 klee/Release/bin/klee-config: stamps/klee-make-release
 
 stamps/qemu-configure-debug: stamps/klee-configure klee/Debug/bin/klee-config
-	mkdir -p qemu-debug
+	mkdir -p qemu-debug && mkdir -p ./qemu-debug/i386-s2e-softmmu/s2e/Plugins/linux
 	cd qemu-debug && $(S2ESRC)/qemu/configure \
 		--prefix=$(S2EBUILD)/opt \
 		--with-llvm=$(S2EBUILD)/llvm/Debug+Asserts  \
@@ -298,7 +298,7 @@ stamps/qemu-configure-release-asan: stamps/klee-make-release-asan
 		--with-clang=$(S2EBUILD)/llvm-native/Release/bin/clang \
 		--with-stp=$(S2EBUILD)/stp-asan \
 		--with-klee=$(S2EBUILD)/klee/Release+Asserts \
-		--target-list=i386-s2e-softmmu \
+		--target-list=i386-s2e-softmmu,i386-softmmu \
 		--asancc=$(ASAN_CC) \
 		--asancxx=$(ASAN_CXX) \
 		--enable-llvm \

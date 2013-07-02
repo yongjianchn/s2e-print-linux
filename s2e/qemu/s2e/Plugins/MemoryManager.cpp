@@ -9,7 +9,8 @@
 #include <s2e/S2EExecutor.h>
 #include <klee/Solver.h>
 #include <klee/Constraints.h>
-
+#include "../../../klee/lib/Core/AddressSpace.h"
+#include "../../../klee/include/klee/ExecutionState.h"
 #include <iostream>
 #include <sstream>
 extern "C" {
@@ -40,6 +41,7 @@ void MemoryManager::initialize()
 	m_pc___kmalloc_return_ip_options_get = cfg->getInt(getConfigKey() + ".pc___kmalloc_return_ip_options_get");
 	m_pc_rep_movsl_ip_options_get = cfg->getInt(getConfigKey() + ".pc_rep_movsl_ip_options_get");
 	m_pc___kmalloc = cfg->getInt(getConfigKey() + ".pc___kmalloc");
+	m_getParFromStack = cfg->getBool(getConfigKey() + ".getParFromStack", true);
 	
 	m_functionMonitor = (s2e::plugins::FunctionMonitor*)(s2e()->getPlugin("FunctionMonitor"));
 	m_RawMonitor = (s2e::plugins::RawMonitor*)(s2e()->getPlugin("RawMonitor"));
@@ -90,10 +92,20 @@ void MemoryManager::onTranslateInstructionStart(
 	//memcpy
 	uint32_t inst=0;	
 	state->readMemoryConcrete(pc, &inst, 2);
-	inst=inst&0xf0ff;
+	
+	/*---op:f3a*；对应的是rep movs；rep stos；rep lods；repe cmps;repe scas；
+	这种判断不包含repne cmps；repne scas等因此感觉它没有道理，
+	而且repe cmps等感觉不必判断，判断rep movs就能达到检测目的*/
+	
+	//inst=inst&0xf0ff;
+	
+	//by xyj---op:f3a[4,5]；对应的仅是rep movs
+	inst=inst&0xfeff;
+	
 	if(!m_detectOnlyMemcpy_ip_options_get)
 	{
-		if(inst == 0xa0f3)//所有的rep ***指令
+		//if(inst == 0xa0f3)
+		if(inst == 0xa4f3)//2013-06-20修改--xuyongjian-仅匹配rep movs
 		{
 			signal->connect(sigc::mem_fun(*this, 
 										  &MemoryManager::onMemcpyExecute));
@@ -149,8 +161,18 @@ void MemoryManager::onFunctionReturn_fro(S2EExecutionState *state, uint64_t pc)
 void MemoryManager::onFunctionCall(S2EExecutionState* state, FunctionMonitorState *fns)
 {
 	s2e()->getMessagesStream() << "---onFunctionCall" << '\n';
-	//get size
-	size = MemoryManager::getArgValue4(state);
+	
+	if(m_getParFromStack)
+	{
+		//get size[2.6.0]
+		size = MemoryManager::getArgValue4(state);
+	}
+	else
+	{	
+		//get size for newkernel[3.3.1]
+		size = state->readCpuRegister(offsetof(CPUX86State, regs[R_EAX]), klee::Expr::Int32);
+	}
+	
 	if (!isa<klee::ConstantExpr>(size))
 	{
 		s2e()->getMessagesStream() << "=============================================" << '\n';
@@ -160,6 +182,7 @@ void MemoryManager::onFunctionCall(S2EExecutionState* state, FunctionMonitorStat
 		printConstraintExpr(state);
 	}
 	s2e()->getMessagesStream() << "分配的size表达式(如果是数，那么是16进制)：" << size << '\n';
+	
 	//注册return时调用的函数
 	bool test = false;
 	FUNCMON_REGISTER_RETURN_A(state, fns, MemoryManager::onFunctionReturn, test);
@@ -198,7 +221,23 @@ klee::ref<klee::Expr> MemoryManager::getArgValue(S2EExecutionState* state)
 klee::ref<klee::Expr> MemoryManager::getArgValue4(S2EExecutionState* state)
 {	
 	uint64_t sp = state->getSp();
-	klee::ref<klee::Expr> size = state->readMemory(sp + 0x4, klee::Expr::Int32);
+	klee::ref<klee::Expr> size = state->readMemory(sp + 4, klee::Expr::Int32);
+	return size;
+}
+klee::ref<klee::Expr> MemoryManager::getArgValue8(S2EExecutionState* state)
+{	
+	uint64_t sp = state->getSp();
+	klee::ref<klee::Expr> size = state->readMemory(sp + 8, klee::Expr::Int32);
+	return size;
+}klee::ref<klee::Expr> MemoryManager::getArgValue12(S2EExecutionState* state)
+{	
+	uint64_t sp = state->getSp();
+	klee::ref<klee::Expr> size = state->readMemory(sp + 12, klee::Expr::Int32);
+	return size;
+}klee::ref<klee::Expr> MemoryManager::getArgValue16(S2EExecutionState* state)
+{	
+	uint64_t sp = state->getSp();
+	klee::ref<klee::Expr> size = state->readMemory(sp + 16, klee::Expr::Int32);
 	return size;
 }
 
@@ -229,10 +268,10 @@ bool MemoryManager::check___kmalloc(uint32_t address, klee::ref<klee::Expr> size
 	if (isa<klee::ConstantExpr>(size))
 	{
 		int value = cast<klee::ConstantExpr>(size)->getZExtValue();
-		if (value <= 0 || value >= 0x00ff0000)
+		if (value <= 0 || value >= 0xf0000)
 		{
 			s2e()->getMessagesStream() << "============================================================" << '\n';
-			s2e()->getMessagesStream() << "BUG: __kmalloc [Size <= 0||Size >= 0x0fff0000] Size: " << value << '\n';
+			s2e()->getMessagesStream() << "BUG: __kmalloc [Size <= 0||Size >= 0xf0000] Size: " << value << '\n';
 			s2e()->getMessagesStream() << "============================================================" << '\n';
 			//打印完整路径约束
 			printConstraintExpr(state);
@@ -249,7 +288,7 @@ bool MemoryManager::check___kmalloc(uint32_t address, klee::ref<klee::Expr> size
 	{
 		//求解出size=0的时候外界的输入是多少，也就是外界传入什么值的时候可以造成size会为=0
 		bool isTrue;
-		klee::ref<klee::Expr> cond = klee::EqExpr::create(size, 
+		klee::ref<klee::Expr> cond = klee::SleExpr::create(size, 
 									 klee::ConstantExpr::create( 0, size.get()->getWidth()));
 		if (!(s2e()->getExecutor()->getSolver()->mayBeTrue(klee::Query(state->constraints, cond), isTrue))) { 
 			s2e()->getMessagesStream() << "failed to assert the condition" << '\n';
@@ -263,8 +302,9 @@ bool MemoryManager::check___kmalloc(uint32_t address, klee::ref<klee::Expr> size
 			s2e()->getExecutor()->getSymbolicSolution(*state, inputs);
 			
 			s2e()->getMessagesStream() << "======================================================" << '\n';
-			s2e()->getMessagesStream() << "BUG:on this condition __kmalloc size will = 0" << '\n';
+			s2e()->getMessagesStream() << "BUG:on this condition __kmalloc size will <= 0" << '\n';
 			s2e()->getMessagesStream() << "Condition: " << '\n';
+			
 			for (it = inputs.begin(); it != inputs.end(); ++it) {
 				const VarValuePair &vp = *it;
 				s2e()->getMessagesStream() << vp.first << " : ";
@@ -273,13 +313,53 @@ bool MemoryManager::check___kmalloc(uint32_t address, klee::ref<klee::Expr> size
 				}
 				s2e()->getMessagesStream() << '\n';
 			}
+			///added by xyj 05.23
+			/*
+			for (int i = 0; i < int((state->symbolics).size()); i++)
+			{
+				
+				if((state->addressSpace).findObject((state->symbolics[i]).first) == NULL)
+				{
+					s2e()->getMessagesStream() << "没有找到memoryObject对应的objectState"<<'\n';
+					continue;
+				}
+				
+				const klee::ObjectState *ob = (state->addressSpace).findObject((state->symbolics[i]).first);
+				
+				uint64_t address_par = state->symbolics[i].first->address;
+				unsigned size_par = state->symbolics[i].first->size;
+				
+				for (int j = 0; j < size_par; j++)
+				{
+					klee::ref<klee::Expr> para = state->readMemory(address_par+j,1);
+					cond = klee::NeExpr::create(para, 
+									klee::ConstantExpr::create(uint64_t(inputs[i].second[j]), para.get()->getWidth()));	
+					if (!(s2e()->getExecutor()->getSolver()->mayBeTrue(klee::Query(state->constraints, cond), isTrue))) 
+					{ 
+						s2e()->getMessagesStream() << "failed to assert the condition" << '\n';
+						return false;
+					}
+					//s2e()->getExecutor()->addConstraint(*state, cond);
+				}
+			}
+			inputs.clear();
+			s2e()->getExecutor()->getSymbolicSolution(*state, inputs);
+			for (it = inputs.begin(); it != inputs.end(); ++it) {
+				const VarValuePair &vp = *it;
+				s2e()->getMessagesStream() << vp.first << " : ";
+				for (unsigned i=0; i<vp.second.size(); ++i) {
+					s2e()->getMessagesStream() << hexval((unsigned char) vp.second[i]) << " ";
+				}
+				s2e()->getMessagesStream() << '\n';
+			}
+			*/
 			s2e()->getMessagesStream() << "======================================================" << '\n';
 			//打印完整路径约束
 			printConstraintExpr(state);
 			isok = false;
 			if(m_terminateOnBugs)
 			{
-				s2e()->getExecutor()->terminateStateEarly(*state, "BUG: __kmalloc size is not valid[size=0]\n");
+				s2e()->getExecutor()->terminateStateEarly(*state, "BUG: __kmalloc size is not valid[size<=0]\n");
 			}
 		}
 		
@@ -322,10 +402,10 @@ bool MemoryManager::check_rep(uint32_t edi, klee::ref<klee::Expr> ecx, S2EExecut
 	if(isa<klee::ConstantExpr>(ecx))
 	{
 		int ecx_con = cast<klee::ConstantExpr>(ecx)->getZExtValue();
-		if(ecx_con < 0 || ecx_con > 0x00ff0000) 
+		if(ecx_con < 0 || ecx_con > 0xf0000) 
 		{
 			s2e()->getMessagesStream() << "============================================================" << '\n';
-			s2e()->getMessagesStream() << "BUG: memcpy [Size < 0||Size > 0x0fff0000] Size: " << hexval(ecx_con) << '\n';
+			s2e()->getMessagesStream() << "BUG: memcpy [Size < 0||Size > 0xf0000] Size: " << hexval(ecx_con) << '\n';
 			s2e()->getMessagesStream() << "============================================================" << '\n';
 			//打印完整路径约束
 			printConstraintExpr(state);
@@ -349,7 +429,7 @@ bool MemoryManager::check_rep(uint32_t edi, klee::ref<klee::Expr> ecx, S2EExecut
 		//检查是否可能过大---设定为0x00ffffff
 		bool isTrue;
 		klee::ref<klee::Expr> cond = klee::SgeExpr::create(ecx, 
-									 klee::ConstantExpr::create( 0x00ffffff, size.get()->getWidth()));
+									 klee::ConstantExpr::create( 0xf0000, size.get()->getWidth()));
 		if (!(s2e()->getExecutor()->getSolver()->mayBeTrue(klee::Query(state->constraints, cond), isTrue))) { 
 			s2e()->getMessagesStream() << "failed to assert the condition" << '\n';
 			return false;
@@ -362,7 +442,7 @@ bool MemoryManager::check_rep(uint32_t edi, klee::ref<klee::Expr> ecx, S2EExecut
 			s2e()->getExecutor()->getSymbolicSolution(*state, inputs);
 			
 			s2e()->getMessagesStream() << "======================================================" << '\n';
-			s2e()->getMessagesStream() << "BUG:on this condition memcpy size will >= 0x00ffffff" << '\n';
+			s2e()->getMessagesStream() << "BUG:on this condition memcpy size will >= 0xf0000" << '\n';
 			s2e()->getMessagesStream() << "Condition: " << '\n';
 			for (it = inputs.begin(); it != inputs.end(); ++it) {
 				const VarValuePair &vp = *it;

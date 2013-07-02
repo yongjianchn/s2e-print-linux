@@ -33,6 +33,7 @@ private:
 	bool m_terminateOnBugs;
 	bool m_detectOnly__kmalloc_ip_options_get;
 	bool m_detectOnlyMemcpy_ip_options_get;
+	bool m_getParFromStack;
 	uint64_t m_pc_ip_options_get_call___kmalloc;
 	uint64_t m_pc___kmalloc_return_ip_options_get;
 	uint64_t m_pc_rep_movsl_ip_options_get;
@@ -71,7 +72,9 @@ public:
 	
 	klee::ref<klee::Expr> getArgValue(S2EExecutionState* state);
 	klee::ref<klee::Expr> getArgValue4(S2EExecutionState* state);
-
+	klee::ref<klee::Expr> getArgValue8(S2EExecutionState* state);
+	klee::ref<klee::Expr> getArgValue12(S2EExecutionState* state);
+	klee::ref<klee::Expr> getArgValue16(S2EExecutionState* state);
 	bool check___kmalloc(uint32_t address, klee::ref<klee::Expr> size, S2EExecutionState *state);
 	bool check_rep(uint32_t edi, klee::ref<klee::Expr> ecx, S2EExecutionState *state);
 	
