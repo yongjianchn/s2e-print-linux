@@ -12,7 +12,7 @@ else ifeq ($(OS),Linux)
 JOBS := $(shell grep -c ^processor /proc/cpuinfo)
 endif
 
-all: all-debug
+all: all-release
 
 all-release: stamps/qemu-make-release stamps/tools-make-release
 
