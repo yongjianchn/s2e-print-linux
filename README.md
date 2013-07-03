@@ -1,5 +1,8 @@
 #说明
 
+这个repo是基于2012年7月的s2e1.2；这个s2e有一些bug。所以将现有工具移植到s2e-stable-1.2的最新代码中。  
+此后在[新的repo](https://github.com/xuyongjiande/s2e-MemoryManager)中更新
+
 本来这个只是用来输出linux进程信息的，但是后来的工作就一直使用这个s2e，没有再上传新的s2e，名称也没有更改。
 
 一般情况下，我自己在s2e上做的修改都会在这里体现。
